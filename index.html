@@ -17,56 +17,289 @@
             user-select: none;
             transition: all 0.1s;
         }
+        /* 3D 효과를 위한 테두리 스타일 */
         .cell-unrevealed {
-            background-color: #e2e8f0;
+            background-color: #cbd5e1;
             border: 3px solid;
-            border-top-color: #ffffff;
-            border-left-color: #ffffff;
-            border-bottom-color: #94a3b8;
-            border-right-color: #94a3b8;
-        }
-        .cell-unrevealed:active {
-            border: none;
+            border-top-color: #f8fafc;
+            border-left-color: #f8fafc;
+            border-bottom-color: #64748b;
+            border-right-color: #64748b;
         }
         .cell-revealed {
-            background-color: #f1f5f9;
-            border: 1px solid #cbd5e1;
+            background-color: #e2e8f0;
+            border: 1px solid #94a3b8;
         }
-        .mine {
-            background-color: #ef4444 ! from;
+        .mine-hit {
+            background-color: #ef4444 !important;
         }
+        /* 숫자별 색상 정의 */
         .num-1 { color: #2563eb; }
         .num-2 { color: #16a34a; }
         .num-3 { color: #dc2626; }
         .num-4 { color: #1e1b4b; }
         .num-5 { color: #7f1d1d; }
         .num-6 { color: #0891b2; }
-        .num-7 { color: #000000; }
-        .num-8 { color: #4b5563; }
+        .num-7 { color: #334155; }
+        .num-8 { color: #000000; }
     </style>
 </head>
-<body class="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans text-slate-700">
+<body class="min-h-screen bg-slate-200 flex flex-col items-center justify-center p-4 font-sans">
 
-    <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-200 w-full max-w-fit overflow-auto">
-        
-        <!-- Header Controls -->
-        <div class="flex flex-wrap items-center justify-between mb-6 gap-4 min-w-[300px]">
-            <div class="relative">
-                <select id="levelSelect" class="appearance-none bg-slate-50 hover:bg-slate-100 px-4 py-2 pr-8 rounded-lg border border-slate-200 transition-colors font-medium text-slate-700 cursor-pointer focus:outline-none">
-                    <option value="BEGINNER">초급</option>
-                    <option value="INTERMEDIATE">중급</option>
-                    <option value="EXPERT">고급</option>
-                </select>
-                <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-400">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </div>
+    <div class="bg-slate-300 p-4 rounded-lg shadow-2xl border-4 border-slate-400">
+        <!-- 상단 바: 지뢰 수, 리셋 버튼, 타이머 -->
+        <div class="flex items-center justify-between bg-slate-400 p-3 rounded mb-4 shadow-inner border-b-2 border-slate-500">
+            <div class="bg-black text-red-500 font-mono text-2xl px-2 py-1 rounded border-2 border-slate-500 w-20 text-center" id="mineCountDisplay">
+                010
             </div>
+            
+            <button id="resetBtn" class="bg-slate-300 hover:bg-slate-200 border-4 border-t-slate-100 border-l-slate-100 border-b-slate-500 border-r-slate-500 active:border-none p-1 transition-all">
+                <span id="faceIcon" class="text-3xl">🙂</span>
+            </button>
 
-            <div class="flex items-center gap-6">
-                <div class="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-full font-bold">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path></svg>
-                    <span id="mineCountDisplay">010</span>
-                </div>
+            <div class="bg-black text-red-500 font-mono text-2xl px-2 py-1 rounded border-2 border-slate-500 w-20 text-center" id="timerDisplay">
+                000
+            </div>
+        </div>
+
+        <!-- 난이도 선택 -->
+        <div class="flex justify-center mb-4 gap-2">
+            <select id="levelSelect" class="bg-slate-100 border-2 border-slate-400 rounded px-2 py-1 text-sm font-bold">
+                <option value="BEGINNER">초급 (9x9)</option>
+                <option value="INTERMEDIATE">중급 (16x16)</option>
+                <option value="EXPERT">고급 (30x16)</option>
+            </select>
+        </div>
+
+        <!-- 게임 그리드 -->
+        <div class="bg-slate-400 p-1 border-4 border-slate-500 rounded shadow-inner overflow-auto max-w-[95vw] max-h-[70vh]">
+            <div id="gameGrid" class="grid gap-0" style="width: max-content;"></div>
+        </div>
+
+        <!-- 안내 문구 -->
+        <div class="mt-4 text-center text-xs text-slate-600 font-semibold">
+            좌클릭: 열기 | 우클릭: 깃발 🚩
+        </div>
+    </div>
+
+    <script>
+        const LEVELS = {
+            BEGINNER: { rows: 9, cols: 9, mines: 10 },
+            INTERMEDIATE: { rows: 16, cols: 16, mines: 40 },
+            EXPERT: { rows: 16, cols: 30, mines: 99 }
+        };
+
+        let currentLevel = LEVELS.BEGINNER;
+        let grid = [];
+        let gameState = 'ready'; // ready, playing, won, lost
+        let minesLeft = 10;
+        let time = 0;
+        let timerInterval = null;
+
+        const gridElement = document.getElementById('gameGrid');
+        const levelSelect = document.getElementById('levelSelect');
+        const mineCountDisplay = document.getElementById('mineCountDisplay');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const resetBtn = document.getElementById('resetBtn');
+        const faceIcon = document.getElementById('faceIcon');
+
+        function initGame() {
+            const levelKey = levelSelect.value;
+            currentLevel = LEVELS[levelKey];
+            gameState = 'ready';
+            minesLeft = currentLevel.mines;
+            time = 0;
+            clearInterval(timerInterval);
+            
+            updateDisplay();
+            faceIcon.innerText = '🙂';
+            
+            grid = [];
+            gridElement.innerHTML = '';
+            gridElement.style.gridTemplateColumns = `repeat(${currentLevel.cols}, 32px)`;
+
+            for (let r = 0; r < currentLevel.rows; r++) {
+                grid[r] = [];
+                for (let c = 0; c < currentLevel.cols; c++) {
+                    const cellObj = {
+                        r, c,
+                        isMine: false,
+                        isRevealed: false,
+                        isFlagged: false,
+                        neighborMines: 0,
+                        element: null
+                    };
+
+                    const cellEl = document.createElement('div');
+                    cellEl.className = 'cell cell-unrevealed';
+                    
+                    // 우클릭 방지
+                    cellEl.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        handleRightClick(r, c);
+                    });
+
+                    // 좌클릭
+                    cellEl.addEventListener('click', (e) => {
+                        handleLeftClick(r, c);
+                    });
+                    
+                    gridElement.appendChild(cellEl);
+                    cellObj.element = cellEl;
+                    grid[r][c] = cellObj;
+                }
+            }
+        }
+
+        function startGame(firstR, firstC) {
+            // 지뢰 배치 (첫 클릭 지점과 그 주변 8칸 제외)
+            let minesPlaced = 0;
+            while (minesPlaced < currentLevel.mines) {
+                const r = Math.floor(Math.random() * currentLevel.rows);
+                const c = Math.floor(Math.random() * currentLevel.cols);
                 
-                <button id="resetBtn" class="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-all active:scale-90 shadow-md">
-                    <svg id="resetIcon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001
+                const isNearFirstClick = Math.abs(r - firstR) <= 1 && Math.abs(c - firstC) <= 1;
+                
+                if (!grid[r][c].isMine && !isNearFirstClick) {
+                    grid[r][c].isMine = true;
+                    minesPlaced++;
+                }
+            }
+
+            // 주변 지뢰 개수 계산
+            for (let r = 0; r < currentLevel.rows; r++) {
+                for (let c = 0; c < currentLevel.cols; c++) {
+                    if (grid[r][c].isMine) continue;
+                    let count = 0;
+                    for (let i = -1; i <= 1; i++) {
+                        for (let j = -1; j <= 1; j++) {
+                            if (grid[r + i]?.[c + j]?.isMine) count++;
+                        }
+                    }
+                    grid[r][c].neighborMines = count;
+                }
+            }
+
+            gameState = 'playing';
+            timerInterval = setInterval(() => {
+                time = Math.min(time + 1, 999);
+                updateDisplay();
+            }, 1000);
+
+            revealCell(firstR, firstC);
+        }
+
+        function handleLeftClick(r, c) {
+            if (gameState === 'won' || gameState === 'lost') return;
+            if (grid[r][c].isFlagged) return;
+
+            if (gameState === 'ready') {
+                startGame(r, c);
+            } else {
+                revealCell(r, c);
+            }
+        }
+
+        function handleRightClick(r, c) {
+            if (gameState !== 'playing' && gameState !== 'ready') return;
+            const cell = grid[r][c];
+            if (cell.isRevealed) return;
+            
+            cell.isFlagged = !cell.isFlagged;
+            minesLeft += cell.isFlagged ? -1 : 1;
+            updateDisplay();
+            renderCell(cell);
+        }
+
+        function revealCell(r, c) {
+            const cell = grid[r][c];
+            if (cell.isRevealed || cell.isFlagged) return;
+
+            cell.isRevealed = true;
+            renderCell(cell);
+
+            if (cell.isMine) {
+                endGame(false, r, c);
+                return;
+            }
+
+            if (cell.neighborMines === 0) {
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        if (grid[r + i]?.[c + j]) {
+                            revealCell(r + i, c + j);
+                        }
+                    }
+                }
+            }
+
+            checkWin();
+        }
+
+        function renderCell(cell) {
+            const el = cell.element;
+            if (cell.isRevealed) {
+                el.className = 'cell cell-revealed';
+                if (cell.isMine) {
+                    el.innerHTML = '💣';
+                } else if (cell.neighborMines > 0) {
+                    el.innerHTML = cell.neighborMines;
+                    el.classList.add(`num-${cell.neighborMines}`);
+                } else {
+                    el.innerHTML = '';
+                }
+            } else {
+                el.className = 'cell cell-unrevealed';
+                el.innerHTML = cell.isFlagged ? '🚩' : '';
+            }
+        }
+
+        function updateDisplay() {
+            mineCountDisplay.innerText = String(Math.max(0, minesLeft)).padStart(3, '0');
+            timerDisplay.innerText = String(time).padStart(3, '0');
+        }
+
+        function checkWin() {
+            let unrevealedNonMines = 0;
+            for (let r = 0; r < currentLevel.rows; r++) {
+                for (let c = 0; c < currentLevel.cols; c++) {
+                    if (!grid[r][c].isMine && !grid[r][c].isRevealed) unrevealedNonMines++;
+                }
+            }
+
+            if (unrevealedNonMines === 0) {
+                endGame(true);
+            }
+        }
+
+        function endGame(won, hitR, hitC) {
+            gameState = won ? 'won' : 'lost';
+            clearInterval(timerInterval);
+            faceIcon.innerText = won ? '😎' : '😵';
+            
+            // 모든 지뢰 공개
+            for (let r = 0; r < currentLevel.rows; r++) {
+                for (let c = 0; c < currentLevel.cols; c++) {
+                    const cell = grid[r][c];
+                    if (cell.isMine) {
+                        cell.isRevealed = true;
+                        renderCell(cell);
+                        if (!won && r === hitR && c === hitC) {
+                            cell.element.classList.add('mine-hit');
+                        }
+                    } else if (!won && cell.isFlagged) {
+                        // 잘못 깃발 꽂은 곳 표시
+                        cell.element.innerHTML = '❌';
+                    }
+                }
+            }
+        }
+
+        levelSelect.addEventListener('change', initGame);
+        resetBtn.addEventListener('click', initGame);
+
+        // 초기 게임 실행
+        window.onload = initGame;
+    </script>
+</body>
+</html>
